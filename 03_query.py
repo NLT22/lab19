@@ -14,19 +14,22 @@ from graphrag.config import (
 from graphrag.pdf_loader import load_chunks
 from graphrag.retriever import GraphRAGRetriever
 from graphrag.flat_rag import FlatRAGRetriever
+from graphrag.hybrid_rag import HybridRAGRetriever
 
 BANNER = """
 ╔══════════════════════════════════════════╗
 ║   GraphRAG vs Flat RAG — Query Console  ║
 ╚══════════════════════════════════════════╝
-Mode commands: 'flat', 'graph', 'both'
+Mode commands: 'flat', 'graph', 'hybrid', 'all'
 Type 'quit' to exit.
 """
 
 MODE_HELP = {
-    "both": "Both Flat RAG and GraphRAG",
+    "all": "Flat RAG, GraphRAG, and Hybrid RAG",
+    "both": "Flat RAG and GraphRAG",
     "flat": "Flat RAG only",
     "graph": "GraphRAG only",
+    "hybrid": "Hybrid RAG only",
 }
 
 
@@ -50,9 +53,10 @@ def main():
     flat_rag.build_index(chunks)
 
     graphrag = GraphRAGRetriever(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, chat_client, chat_model, chunks=chunks)
+    hybrid_rag = HybridRAGRetriever(graphrag, flat_rag, chat_client, chat_model, vector_k=5)
 
     print(BANNER)
-    mode = "both"
+    mode = "all"
     print(f"Current mode: {MODE_HELP[mode]}")
 
     try:
@@ -73,13 +77,17 @@ def main():
                 continue
 
             question = user_input
-            if mode in ("flat", "both"):
+            if mode in ("flat", "both", "all"):
                 flat_result = flat_rag.answer(question)
                 print_result("Flat RAG", flat_result)
 
-            if mode in ("graph", "both"):
+            if mode in ("graph", "both", "all"):
                 graph_result = graphrag.answer(question)
                 print_result("GraphRAG", graph_result)
+
+            if mode in ("hybrid", "all"):
+                hybrid_result = hybrid_rag.answer(question)
+                print_result("Hybrid RAG", hybrid_result)
     finally:
         graphrag.close()
 

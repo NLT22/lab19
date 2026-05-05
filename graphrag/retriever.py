@@ -446,8 +446,8 @@ class GraphRAGRetriever:
 
         return rows_1hop, rows_2hop
 
-    def answer(self, question: str) -> dict:
-        t0 = time.time()
+    def retrieve_context(self, question: str) -> dict:
+        """Retrieve graph facts plus evidence snippets without calling the answer LLM."""
         raw_entities = self.extract_query_entities(question)
         entities = self._filter_seed_entities(raw_entities)
         for name in self.infer_entities_from_graph(question):
@@ -458,12 +458,10 @@ class GraphRAGRetriever:
         boundary_answer = self._attribute_boundary_refusal(question, entities)
         if boundary_answer:
             return {
-                "answer": boundary_answer,
-                "entities_found": entities,
-                "subgraph_triples": 0,
-                "top_triples": "",
-                "tokens": 0,
-                "latency": round(time.time() - t0, 2),
+                "context": boundary_answer,
+                "entities": entities,
+                "subgraph": [],
+                "boundary_answer": boundary_answer,
             }
 
         rows_1hop, rows_2hop = self.get_subgraph(entities, question=question)
@@ -477,6 +475,29 @@ class GraphRAGRetriever:
                 evidence_chunks.append(chunk)
         if evidence_chunks:
             context += "\n\nOriginal source chunks:\n" + "\n\n".join(evidence_chunks)
+
+        return {
+            "context": context,
+            "entities": entities,
+            "subgraph": subgraph,
+            "boundary_answer": "",
+        }
+
+    def answer(self, question: str) -> dict:
+        t0 = time.time()
+        retrieval = self.retrieve_context(question)
+        context = retrieval["context"]
+        subgraph = retrieval["subgraph"]
+
+        if retrieval.get("boundary_answer"):
+            return {
+                "answer": retrieval["boundary_answer"],
+                "entities_found": retrieval["entities"],
+                "subgraph_triples": 0,
+                "top_triples": "",
+                "tokens": 0,
+                "latency": round(time.time() - t0, 2),
+            }
 
         top_triples = "; ".join(
             f"{r.get('start')}--[{r.get('rel_type')}]-->{r.get('end')}"
@@ -498,7 +519,7 @@ class GraphRAGRetriever:
 
         return {
             "answer": answer_text,
-            "entities_found": entities,
+            "entities_found": retrieval["entities"],
             "subgraph_triples": len(subgraph),
             "top_triples": top_triples,
             "tokens": tokens,

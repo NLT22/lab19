@@ -1,5 +1,5 @@
 """
-Step 4: Run benchmark (36 grounded questions). Compare Flat RAG vs GraphRAG.
+Step 4: Run benchmark (36 grounded questions). Compare Flat RAG, GraphRAG, and Hybrid RAG.
 Results saved to results/comparison.csv
 Usage: python 04_evaluate.py
 """
@@ -15,6 +15,7 @@ from graphrag.config import (
 from graphrag.pdf_loader import load_chunks
 from graphrag.retriever import GraphRAGRetriever
 from graphrag.flat_rag import FlatRAGRetriever
+from graphrag.hybrid_rag import HybridRAGRetriever
 from graphrag.evaluator import Evaluator, BENCHMARK_CASES
 
 RESULTS_PATH = "results/comparison.csv"
@@ -23,9 +24,10 @@ FAISS_META_PATH = "data/faiss_meta.pkl"
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run grounded Flat RAG vs GraphRAG benchmark.")
+    parser = argparse.ArgumentParser(description="Run grounded Flat RAG vs GraphRAG vs Hybrid RAG benchmark.")
     parser.add_argument("--limit", type=int, default=0, help="Run only the first N cases (0 = all)")
     parser.add_argument("--delay", type=float, default=1.5, help="Delay between benchmark cases")
+    parser.add_argument("--output", default=RESULTS_PATH, help="CSV output path")
     args = parser.parse_args()
 
     if not os.path.exists(CHUNKS_PATH):
@@ -49,19 +51,20 @@ def main():
 
     print("Connecting to Neo4j ...")
     graphrag = GraphRAGRetriever(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, chat_client, chat_model, chunks=chunks)
+    hybrid_rag = HybridRAGRetriever(graphrag, flat_rag, chat_client, chat_model, vector_k=5)
 
     cases = BENCHMARK_CASES[:args.limit] if args.limit else BENCHMARK_CASES
     print(f"\nRunning {len(cases)} benchmark cases ...")
-    evaluator = Evaluator(flat_rag, graphrag)
+    evaluator = Evaluator(flat_rag, graphrag, hybrid_rag=hybrid_rag)
     try:
         records = evaluator.run(cases=cases, delay=args.delay)
     finally:
         graphrag.close()
 
-    Evaluator.save_csv(records, RESULTS_PATH)
+    Evaluator.save_csv(records, args.output)
     Evaluator.print_summary(records)
 
-    print("\nDone. Review results/comparison.csv for detailed answers.")
+    print(f"\nDone. Review {args.output} for detailed answers.")
 
 
 if __name__ == "__main__":

@@ -149,24 +149,34 @@ class EvalRecord:
     gold_answer: str
     flat_rag_answer: str = ""
     graphrag_answer: str = ""
+    hybrid_rag_answer: str = ""
     flat_rag_score: int = 0
     graphrag_score: int = 0
+    hybrid_rag_score: int = 0
     max_score: int = 0
     flat_rag_tokens: int = 0
     graphrag_tokens: int = 0
+    hybrid_rag_tokens: int = 0
     flat_rag_time: float = 0.0
     graphrag_time: float = 0.0
+    hybrid_rag_time: float = 0.0
     flat_rag_chunks: int = 0
     graphrag_triples: int = 0
+    hybrid_rag_chunks: int = 0
+    hybrid_rag_triples: int = 0
     flat_rag_sources: str = ""
     graphrag_entities: str = ""
     graphrag_top_triples: str = ""
+    hybrid_rag_sources: str = ""
+    hybrid_rag_entities: str = ""
+    hybrid_rag_top_triples: str = ""
 
 
 class Evaluator:
-    def __init__(self, flat_rag, graphrag_retriever):
+    def __init__(self, flat_rag, graphrag_retriever, hybrid_rag=None):
         self.flat_rag = flat_rag
         self.graphrag = graphrag_retriever
+        self.hybrid_rag = hybrid_rag
 
     def run(self, cases: list[dict] | None = None, delay: float = 1.0) -> list[EvalRecord]:
         if cases is None:
@@ -183,12 +193,31 @@ class Evaluator:
             print("  -> GraphRAG ...")
             graph_result = self.graphrag.answer(q)
 
+            if self.hybrid_rag is not None:
+                print("  -> Hybrid RAG ...")
+                hybrid_result = self.hybrid_rag.answer(q)
+            else:
+                hybrid_result = {
+                    "answer": "",
+                    "tokens": 0,
+                    "latency": 0.0,
+                    "retrieved_chunks": 0,
+                    "subgraph_triples": 0,
+                    "sources": [],
+                    "entities_found": [],
+                    "top_triples": "",
+                }
+
             mi = case.get("must_include", [])
             mni = case.get("must_not_include", [])
             flat_score, max_score = _score_answer(flat_result["answer"], mi, mni)
             graph_score, _ = _score_answer(graph_result["answer"], mi, mni)
+            hybrid_score, _ = _score_answer(hybrid_result["answer"], mi, mni)
 
-            print(f"     flat={flat_score}/{max_score}  graph={graph_score}/{max_score}")
+            if self.hybrid_rag is not None:
+                print(f"     flat={flat_score}/{max_score}  graph={graph_score}/{max_score}  hybrid={hybrid_score}/{max_score}")
+            else:
+                print(f"     flat={flat_score}/{max_score}  graph={graph_score}/{max_score}")
 
             rec = EvalRecord(
                 question_id=case["id"],
@@ -198,18 +227,27 @@ class Evaluator:
                 gold_answer=case.get("gold_answer", ""),
                 flat_rag_answer=flat_result["answer"],
                 graphrag_answer=graph_result["answer"],
+                hybrid_rag_answer=hybrid_result["answer"],
                 flat_rag_score=flat_score,
                 graphrag_score=graph_score,
+                hybrid_rag_score=hybrid_score,
                 max_score=max_score,
                 flat_rag_tokens=flat_result["tokens"],
                 graphrag_tokens=graph_result["tokens"],
+                hybrid_rag_tokens=hybrid_result["tokens"],
                 flat_rag_time=flat_result["latency"],
                 graphrag_time=graph_result["latency"],
+                hybrid_rag_time=hybrid_result["latency"],
                 flat_rag_chunks=flat_result.get("retrieved_chunks", 0),
                 graphrag_triples=graph_result.get("subgraph_triples", 0),
+                hybrid_rag_chunks=hybrid_result.get("retrieved_chunks", 0),
+                hybrid_rag_triples=hybrid_result.get("subgraph_triples", 0),
                 flat_rag_sources="|".join(flat_result.get("sources", [])),
                 graphrag_entities="|".join(graph_result.get("entities_found", [])),
                 graphrag_top_triples=graph_result.get("top_triples", ""),
+                hybrid_rag_sources="|".join(hybrid_result.get("sources", [])),
+                hybrid_rag_entities="|".join(hybrid_result.get("entities_found", [])),
+                hybrid_rag_top_triples=hybrid_result.get("top_triples", ""),
             )
             records.append(rec)
             time.sleep(delay)
@@ -232,23 +270,27 @@ class Evaluator:
         total_max = sum(r.max_score for r in records)
         flat_total = sum(r.flat_rag_score for r in records)
         graph_total = sum(r.graphrag_score for r in records)
+        hybrid_total = sum(r.hybrid_rag_score for r in records)
         avg_flat_tok = sum(r.flat_rag_tokens for r in records) / total
         avg_graph_tok = sum(r.graphrag_tokens for r in records) / total
+        avg_hybrid_tok = sum(r.hybrid_rag_tokens for r in records) / total
         avg_flat_t = sum(r.flat_rag_time for r in records) / total
         avg_graph_t = sum(r.graphrag_time for r in records) / total
+        avg_hybrid_t = sum(r.hybrid_rag_time for r in records) / total
 
         flat_pct = flat_total / total_max * 100 if total_max else 0
         graph_pct = graph_total / total_max * 100 if total_max else 0
+        hybrid_pct = hybrid_total / total_max * 100 if total_max else 0
 
         print("\n" + "=" * 65)
         print(f"EVALUATION SUMMARY  ({total} questions, {total_max} total points)")
         print("=" * 65)
-        print(f"{'Metric':<32} {'Flat RAG':>14} {'GraphRAG':>14}")
+        print(f"{'Metric':<28} {'Flat RAG':>11} {'GraphRAG':>11} {'Hybrid':>11}")
         print("-" * 65)
-        print(f"{'Score (must_include hits)':<32} {flat_total:>8}/{total_max} {graph_total:>8}/{total_max}")
-        print(f"{'Accuracy %':<32} {flat_pct:>13.1f}% {graph_pct:>13.1f}%")
-        print(f"{'Avg tokens/question':<32} {avg_flat_tok:>14.1f} {avg_graph_tok:>14.1f}")
-        print(f"{'Avg latency (s)':<32} {avg_flat_t:>14.2f} {avg_graph_t:>14.2f}")
+        print(f"{'Score':<28} {flat_total:>5}/{total_max:<5} {graph_total:>5}/{total_max:<5} {hybrid_total:>5}/{total_max:<5}")
+        print(f"{'Accuracy %':<28} {flat_pct:>10.1f}% {graph_pct:>10.1f}% {hybrid_pct:>10.1f}%")
+        print(f"{'Avg tokens/question':<28} {avg_flat_tok:>11.1f} {avg_graph_tok:>11.1f} {avg_hybrid_tok:>11.1f}")
+        print(f"{'Avg latency (s)':<28} {avg_flat_t:>11.2f} {avg_graph_t:>11.2f} {avg_hybrid_t:>11.2f}")
         print("-" * 65)
 
         # Break down by difficulty
@@ -259,13 +301,29 @@ class Evaluator:
             sub_max = sum(r.max_score for r in sub)
             fs = sum(r.flat_rag_score for r in sub)
             gs = sum(r.graphrag_score for r in sub)
+            hs = sum(r.hybrid_rag_score for r in sub)
             fp = fs / sub_max * 100 if sub_max else 0
             gp = gs / sub_max * 100 if sub_max else 0
-            print(f"  {diff:<8} ({len(sub):2d} Qs, {sub_max:3d} pts)   flat={fs}/{sub_max} ({fp:.0f}%)   graph={gs}/{sub_max} ({gp:.0f}%)")
+            hp = hs / sub_max * 100 if sub_max else 0
+            print(f"  {diff:<8} ({len(sub):2d} Qs, {sub_max:3d} pts)   flat={fs}/{sub_max} ({fp:.0f}%)   graph={gs}/{sub_max} ({gp:.0f}%)   hybrid={hs}/{sub_max} ({hp:.0f}%)")
 
         # Win breakdown
-        flat_wins  = sum(1 for r in records if r.flat_rag_score > r.graphrag_score)
-        graph_wins = sum(1 for r in records if r.graphrag_score > r.flat_rag_score)
-        ties       = total - flat_wins - graph_wins
-        print(f"\n  Flat wins: {flat_wins}  |  Graph wins: {graph_wins}  |  Ties: {ties}")
+        flat_wins = graph_wins = hybrid_wins = ties = 0
+        for r in records:
+            scores = {
+                "flat": r.flat_rag_score,
+                "graph": r.graphrag_score,
+                "hybrid": r.hybrid_rag_score,
+            }
+            best = max(scores.values())
+            winners = [name for name, score in scores.items() if score == best]
+            if len(winners) != 1:
+                ties += 1
+            elif winners[0] == "flat":
+                flat_wins += 1
+            elif winners[0] == "graph":
+                graph_wins += 1
+            else:
+                hybrid_wins += 1
+        print(f"\n  Best-method wins: Flat {flat_wins}  |  Graph {graph_wins}  |  Hybrid {hybrid_wins}  |  Ties {ties}")
         print("=" * 65)
