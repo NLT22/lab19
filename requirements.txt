@@ -1,0 +1,14 @@
+networkx>=3.0
+neo4j>=5.0
+openai>=1.0
+pandas
+pyarrow
+faiss-cpu
+python-dotenv
+tqdm
+scikit-learn
+pypdf
+matplotlib
+langchain
+langchain-openai
+noderag

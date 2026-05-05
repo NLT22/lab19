@@ -1,0 +1,30 @@
+# Environment & secrets
+.env
+
+# Virtual environment
+venv/
+
+# Data (large files)
+data/chunks.json
+data/pdfs/
+
+# Results (generated output)
+results/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+
+# parquet (raw data)
+*.parquet
