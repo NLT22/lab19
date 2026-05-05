@@ -4,10 +4,10 @@
 # Virtual environment
 venv/
 
-# Data (large files — PDFs and binary indexes)
-data/pdfs/
-data/faiss.index
-data/faiss_meta.pkl
+# # Data (large files — PDFs and binary indexes)
+# data/pdfs/
+# data/faiss.index
+# data/faiss_meta.pkl
 
 # Results are committed for lab submission
 # results/
