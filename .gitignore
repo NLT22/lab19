@@ -4,12 +4,13 @@
 # Virtual environment
 venv/
 
-# Data (large files)
-data/chunks.json
+# Data (large files — PDFs and binary indexes)
 data/pdfs/
+data/faiss.index
+data/faiss_meta.pkl
 
-# Results (generated output)
-results/
+# Results are committed for lab submission
+# results/
 
 # Python cache
 __pycache__/
@@ -25,6 +26,3 @@ __pycache__/
 # IDE
 .vscode/
 .idea/
-
-# parquet (raw data)
-*.parquet

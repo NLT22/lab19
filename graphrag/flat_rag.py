@@ -1,7 +1,10 @@
+import os
+import pickle
 import time
 import numpy as np
 import faiss
 from openai import OpenAI
+from graphrag.config import chat_kwargs
 
 ANSWER_PROMPT = """You are a knowledgeable assistant. Use the following retrieved passages to answer the question.
 If the passages do not contain enough information, say so clearly.
@@ -55,6 +58,26 @@ class FlatRAGRetriever:
         self.docs = texts
         print(f"  [flat_rag] Index built: {len(texts)} vectors, dim={dim}")
 
+    def save_index(self, index_path: str, meta_path: str) -> None:
+        """Persist FAISS index and metadata to disk."""
+        os.makedirs(os.path.dirname(index_path) if os.path.dirname(index_path) else ".", exist_ok=True)
+        faiss.write_index(self.index, index_path)
+        with open(meta_path, "wb") as f:
+            pickle.dump({"docs": self.docs, "doc_meta": self.doc_meta}, f)
+        print(f"  [flat_rag] Index saved → {index_path}")
+
+    def load_index(self, index_path: str, meta_path: str) -> bool:
+        """Load persisted index. Returns True if successful."""
+        if not (os.path.exists(index_path) and os.path.exists(meta_path)):
+            return False
+        self.index = faiss.read_index(index_path)
+        with open(meta_path, "rb") as f:
+            data = pickle.load(f)
+        self.docs = data["docs"]
+        self.doc_meta = data["doc_meta"]
+        print(f"  [flat_rag] Index loaded from {index_path} ({len(self.docs)} vectors)")
+        return True
+
     def search(self, query: str, k: int = 5) -> list[dict]:
         """Return top-k most relevant chunks for query."""
         if self.index is None:
@@ -85,8 +108,8 @@ class FlatRAGRetriever:
                 messages=[{"role": "user", "content": ANSWER_PROMPT.format(
                     context=context, question=question
                 )}],
-                temperature=0.2,
-                max_tokens=512,
+                max_completion_tokens=512,
+                **chat_kwargs(temperature=0.2),
             )
             answer_text = resp.choices[0].message.content or ""
             tokens = resp.usage.total_tokens if resp.usage else 0
@@ -94,9 +117,11 @@ class FlatRAGRetriever:
             answer_text = f"[Error: {e}]"
             tokens = 0
 
+        sources = sorted({h.get("source", "") for h in hits if h.get("source")})
         return {
             "answer": answer_text,
             "retrieved_chunks": len(hits),
+            "sources": sources,
             "tokens": tokens,
             "latency": round(time.time() - t0, 2),
         }

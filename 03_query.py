@@ -49,7 +49,7 @@ def main():
     flat_rag = FlatRAGRetriever(embed_client, embed_model, chat_client, chat_model)
     flat_rag.build_index(chunks)
 
-    graphrag = GraphRAGRetriever(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, chat_client, chat_model)
+    graphrag = GraphRAGRetriever(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, chat_client, chat_model, chunks=chunks)
 
     print(BANNER)
     mode = "both"
