@@ -1,191 +1,258 @@
-# Lab 19 — GraphRAG với Tech Company Corpus
+# Lab 19 - GraphRAG với Tech Company Corpus
 
-Xây dựng hệ thống **GraphRAG** (Graph-based Retrieval Augmented Generation) từ các bài viết Wikipedia về công ty công nghệ, so sánh với Flat RAG truyền thống.
+Dự án xây dựng pipeline **GraphRAG** cho corpus Wikipedia về các công ty công nghệ, sau đó so sánh với **Flat RAG** và **Hybrid RAG** trên bộ benchmark 36 câu hỏi.
+
+Mục tiêu chính của lab:
+
+- ingest PDF thành text chunks;
+- dùng LLM trích xuất entity, relation và literal facts;
+- lưu knowledge graph vào Neo4j;
+- xây dựng vector index bằng FAISS;
+- truy vấn bằng 3 phương pháp: Flat RAG, GraphRAG, Hybrid RAG;
+- đánh giá chất lượng bằng benchmark có gold answer.
 
 ---
 
-## Kiến trúc tổng quan
+## Kết Quả Hiện Tại
 
+Benchmark đầy đủ nằm ở `results/comparison_3way.csv`, báo cáo phân tích nằm ở `results/analyze_results.md`.
+
+| Method | Score | Accuracy | Avg tokens/question | Avg latency |
+|---|---:|---:|---:|---:|
+| Flat RAG | 105/143 | 73.4% | 1,093.5 | 2.24s |
+| GraphRAG | 120/143 | 83.9% | 3,210.0 | 2.73s |
+| Hybrid RAG | 125/143 | 87.4% | 4,258.7 | 4.85s |
+
+Kết luận ngắn:
+
+- **Flat RAG** mạnh ở câu hỏi có đáp án xuất hiện nguyên văn trong chunk.
+- **GraphRAG** tốt hơn sau khi graph lưu thêm literal facts như revenue, employee count, market share, ownership share và evidence snippets.
+- **Hybrid RAG** đạt điểm cao nhất vì kết hợp graph facts với raw text chunks, đổi lại tốn token và latency hơn.
+
+---
+
+## Kiến Trúc Tổng Quan
+
+```text
+PDF files
+   |
+   v
+01_ingest_pdfs.py
+   |-- data/chunks.json
+   v
+02_index.py
+   |-- Neo4j knowledge graph
+   |-- data/faiss.index
+   |-- data/faiss_meta.pkl
+   v
+03_query.py
+   |-- Flat RAG
+   |-- GraphRAG
+   |-- Hybrid RAG
+   v
+04_evaluate.py
+   |-- results/comparison.csv
+   |-- results/comparison_3way.csv
 ```
-PDF files (Wikipedia)
-       │
-       ▼
- 01_ingest_pdfs.py      ← pypdf, sliding-window chunking
-       │ chunks.json
-       ▼
- 02_index.py            ← LLM extract triples → Neo4j Desktop
-       │ Knowledge Graph
-       ▼
- 03_query.py            ← Interactive REPL: GraphRAG vs Flat RAG
- 04_evaluate.py         ← 20-question benchmark → results/comparison.csv
-```
 
-### LLM & Embedding
+### Ba phương pháp truy vấn
 
-| Điều kiện | Chat LLM | Embedding |
+| Method | Retrieval | Điểm mạnh |
 |---|---|---|
-| Có `OPENAI_API_KEY` | OpenAI `gpt-4o-mini` | OpenAI `text-embedding-3-small` |
-| Không có key | LM Studio `openai/gpt-oss-20b` | LM Studio `text-embedding-nomic-embed-text-v1.5` |
+| Flat RAG | FAISS vector search trên text chunks | Nhanh, tốt với facts nằm nguyên trong văn bản |
+| GraphRAG | Neo4j graph traversal + evidence snippets | Tốt với entity relationship, multi-hop, corpus-boundary |
+| Hybrid RAG | Graph context + vector chunks | Chất lượng cao nhất, giữ được cả structure và exact evidence |
 
 ---
 
-## Cài đặt
+## Cài Đặt
 
 ```bash
-# Activate virtual environment
-venv\Scripts\activate          # Windows
-source venv/bin/activate       # Linux/Mac
+# Windows
+venv\Scripts\activate
 
-# Cài thêm các thư viện cần thiết
+# Linux/Mac
+source venv/bin/activate
+
 pip install -r requirements.txt
 ```
 
----
-
-## Cấu hình
-
-Sao chép và điền thông tin vào `.env`:
+Sao chép `.env.example` thành `.env`, sau đó điền cấu hình cần thiết:
 
 ```env
-# Để trống nếu muốn dùng LM Studio hoàn toàn offline
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4o-mini
 OPENAI_EMBED_MODEL=text-embedding-3-small
 
-# LM Studio (cần chạy server tại localhost:1234)
 LM_STUDIO_URL=http://127.0.0.1:1234
 LM_STUDIO_CHAT_MODEL=openai/gpt-oss-20b
 LM_STUDIO_EMBED_MODEL=text-embedding-nomic-embed-text-v1.5
 
-# Neo4j Desktop
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=your_password
 ```
 
-### Yêu cầu LM Studio (nếu chạy offline)
-
-Trong LM Studio, cần load sẵn 2 model:
-- **Chat:** `openai/gpt-oss-20b`
-- **Embedding:** `text-embedding-nomic-embed-text-v1.5`
+Nếu không có `OPENAI_API_KEY`, project sẽ dùng LM Studio local.
 
 ---
 
-## Dữ liệu
+## Dữ Liệu
 
-Tải PDF từ Wikipedia (Export → Download as PDF) về các công ty:
+Corpus hiện tại nằm trong `data/pdfs/`:
 
-```
+```text
 data/pdfs/
-├── Google.pdf
-├── OpenAI.pdf
-├── Microsoft.pdf
-├── Apple_Inc.pdf
-├── Tesla_Inc.pdf
+├── Anthropic.pdf
 ├── Meta_Platforms.pdf
-├── Amazon.pdf
+├── Microsoft.pdf
 ├── Nvidia.pdf
-└── ...
+└── OpenAI.pdf
 ```
+
+Các artifact được tạo sau khi ingest/index:
+
+- `data/chunks.json`: text chunks từ PDF;
+- `data/faiss.index`: FAISS vector index;
+- `data/faiss_meta.pkl`: metadata cho vector chunks;
+- Neo4j graph: nodes, relationships, literal facts và source evidence.
 
 ---
 
-## Chạy pipeline
+## Chạy Pipeline
 
-### Bước 1 — Ingest PDF
+### 1. Ingest PDF
 
 ```bash
 python 01_ingest_pdfs.py
 ```
 
-Xuất ra `data/chunks.json` với các đoạn text đã chunk (800 ký tự, overlap 100).
+Script đọc PDF trong `data/pdfs/`, chia thành chunks và lưu vào `data/chunks.json`.
 
-### Bước 2 — Index vào Neo4j
+### 2. Index graph và vector
 
 ```bash
-# Start Neo4j Desktop trước, sau đó:
 python 02_index.py
+```
 
-# Xóa graph cũ và index lại:
+Nếu muốn xoá graph cũ rồi index lại:
+
+```bash
 python 02_index.py --clear
 ```
 
-Kiểm tra đồ thị tại **Neo4j Browser**: `http://localhost:7474`
+Kiểm tra graph trong Neo4j Browser:
+
 ```cypher
 MATCH (n)-[r]->(m) RETURN n,r,m LIMIT 100
 ```
 
-### Bước 3 — Query tương tác
+### 3. Query tương tác
 
 ```bash
 python 03_query.py
 ```
 
-```
-> Who founded Google?
-[Flat RAG]  Google was founded by Larry Page and Sergey Brin...
-[GraphRAG]  Google --[FOUNDED_BY]--> Larry Page, Sergey Brin...
+Các mode hỗ trợ:
 
-# Đổi mode:
-> flat      ← chỉ dùng Flat RAG
-> graph     ← chỉ dùng GraphRAG
-> both      ← so sánh song song (mặc định)
-> quit
+```text
+flat    - chỉ chạy Flat RAG
+graph   - chỉ chạy GraphRAG
+hybrid  - chỉ chạy Hybrid RAG
+both    - so sánh Flat RAG và GraphRAG
+all     - chạy cả Flat RAG, GraphRAG và Hybrid RAG
+quit    - thoát
 ```
 
-### Bước 4 — Benchmark 20 câu hỏi
+Mặc định console chạy mode `all`.
+
+### 4. Benchmark
+
+Chạy toàn bộ 36 câu:
 
 ```bash
-python 04_evaluate.py
+python 04_evaluate.py --delay 0 --output results/comparison_3way.csv
 ```
 
-Kết quả lưu tại `results/comparison.csv` gồm: câu hỏi, câu trả lời của cả hai hệ thống, số token, độ trễ.
+Chạy thử N câu đầu:
+
+```bash
+python 04_evaluate.py --limit 5 --delay 0 --output results/comparison_3way_sample.csv
+```
+
+Trong đó `--limit 5` nghĩa là chỉ chạy 5 câu đầu của benchmark để test nhanh, không chạy đủ 36 câu.
 
 ---
 
-## Cấu trúc code
+## Cấu Trúc Code
 
-```
+```text
 Lab19/
-├── .env                        # Credentials (không commit)
-├── requirements.txt
+├── 01_ingest_pdfs.py          # PDF -> chunks
+├── 02_index.py                # chunks -> Neo4j graph + FAISS index
+├── 03_query.py                # interactive query console
+├── 04_evaluate.py             # benchmark evaluator
 ├── graphrag/
-│   ├── config.py               # LLM/embed client factory
-│   ├── pdf_loader.py           # PDF → chunks
-│   ├── extractor.py            # LLM → (subject, relation, object) triples
-│   ├── graph_builder.py        # Neo4j MERGE nodes + relationships
-│   ├── retriever.py            # 2-hop Cypher traversal → LLM answer
-│   ├── flat_rag.py             # FAISS + embeddings → LLM answer
-│   └── evaluator.py            # 20-question benchmark
-├── 01_ingest_pdfs.py
-├── 02_index.py
-├── 03_query.py
-└── 04_evaluate.py
+│   ├── config.py              # LLM/embed client factory
+│   ├── pdf_loader.py          # PDF loading + chunking
+│   ├── extractor.py           # LLM extraction prompt + parsing
+│   ├── graph_builder.py       # Neo4j write logic
+│   ├── retriever.py           # GraphRAG retrieval + answer
+│   ├── flat_rag.py            # FAISS retrieval + answer
+│   ├── hybrid_rag.py          # GraphRAG + Flat RAG hybrid retrieval
+│   └── evaluator.py           # benchmark cases + scoring
+├── data/
+│   ├── chunks.json
+│   ├── faiss.index
+│   ├── faiss_meta.pkl
+│   └── pdfs/
+└── results/
+    ├── analyze_results.md
+    ├── comparison.csv
+    ├── comparison_3way.csv
+    └── visualisation_Limit_1000.png
 ```
 
 ---
 
 ## Neo4j Schema
 
-```
-(:Entity {name: String})
-  -[:RELATION {type: String, source_doc: String}]->
-(:Entity {name: String})
+Graph lưu cả entity relationships và literal facts.
+
+```text
+(:Entity {name})
+  -[:RELATION {type, source_doc, evidence}]->
+(:Entity {name})
 ```
 
-Ví dụ triples được trích xuất:
-```
+Ví dụ:
+
+```text
 (OpenAI) --[FOUNDED_BY]--> (Sam Altman)
-(OpenAI) --[FOUNDED_BY]--> (Elon Musk)
 (OpenAI) --[FOUNDED_IN]--> (2015)
 (Microsoft) --[INVESTED_IN]--> (OpenAI)
+(Nvidia) --[HAS_REVENUE]--> ($130.5 billion)
 ```
+
+Ngoài triple thông thường, extractor cũng cố gắng giữ lại các literal attributes quan trọng để GraphRAG trả lời được câu hỏi dạng "bao nhiêu", "năm nào", "tỷ lệ bao nhiêu".
 
 ---
 
-## Deliverables (nộp bài)
+## Results
 
-- [ ] Mã nguồn (thư mục `graphrag/` + 4 script)
-- [ ] Ảnh chụp màn hình Neo4j Browser (Knowledge Graph)
-- [ ] `results/comparison.csv` (20 câu hỏi benchmark)
-- [ ] Phân tích chi phí token và thời gian
+Các file kết quả chính:
+
+- `results/comparison.csv`: benchmark hai phương pháp cũ.
+- `results/comparison_3way.csv`: benchmark Flat RAG vs GraphRAG vs Hybrid RAG.
+- `results/analyze_results.md`: phân tích kết quả và nhận xét.
+- `results/visualisation_Limit_1000.png`: ảnh visualization graph.
+
+---
+
+## Deliverables
+
+- Mã nguồn pipeline GraphRAG, Flat RAG và Hybrid RAG.
+- Knowledge graph trên Neo4j.
+- FAISS index cho Flat/Hybrid RAG.
+- Benchmark CSV trong `results/`.
+- Báo cáo phân tích trong `results/analyze_results.md`.
