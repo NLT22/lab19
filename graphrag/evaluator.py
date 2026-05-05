@@ -4,26 +4,39 @@ import time
 from dataclasses import dataclass, field, asdict
 
 BENCHMARK_QUESTIONS = [
-    "Who founded Google and when was it established?",
-    "What is the relationship between OpenAI and Microsoft?",
-    "What major products and services does Apple offer?",
-    "Who is the CEO of Tesla?",
-    "Which companies compete with Amazon AWS in cloud computing?",
-    "What programming language was created by Google?",
-    "Who has invested in OpenAI?",
-    "What significant AI-related acquisition did Microsoft make?",
-    "Where is Meta's headquarters located?",
-    "What is the relationship between YouTube and Google?",
-    "What companies did Elon Musk found or co-found?",
-    "Which major tech companies are headquartered in Seattle?",
-    "What is the supply relationship between Apple and Samsung?",
-    "Who are the co-founders of LinkedIn?",
-    "What social media platform did Meta (Facebook) acquire?",
-    "What cloud services does Google provide?",
-    "Who invented the World Wide Web?",
-    "What company developed the Android operating system?",
-    "Which companies have invested in Anthropic?",
+    # === OpenAI (sources: OpenAI.pdf, Anthropic.pdf) ===
+    "Who founded OpenAI and in what year?",
+    "What is the investment relationship between Microsoft and OpenAI?",
+    "Who has provided funding to Anthropic?",
+    "What is the relationship between OpenAI and Anthropic in terms of founding team?",
+
+    # === Microsoft (sources: Microsoft.pdf, LinkedIn.pdf) ===
+    "What major AI or cloud acquisition did Microsoft complete in recent years?",
+    "Who are the co-founders of LinkedIn, and how is LinkedIn related to Microsoft?",
+
+    # === Apple & Nvidia (sources: Apple_Inc.pdf, Nvidia.pdf) ===
+    "What are the main hardware products Apple is known for?",
     "What role does Nvidia play in the AI and machine learning ecosystem?",
+    "What chip or semiconductor technology does Nvidia supply to AI companies?",
+
+    # === Tesla & SpaceX / Elon Musk (sources: Tesla,_Inc.pdf) ===
+    "Who is the CEO of Tesla and what other companies is that person associated with?",
+    "When was Tesla founded and who were its original founders?",
+
+    # === Meta & YouTube (sources: Meta_Platforms.pdf, YouTube.pdf) ===
+    "What social media platforms does Meta own or operate?",
+    "How did YouTube come to be owned by Google, and what is its business model?",
+
+    # === Amazon AWS (sources: Amazon_Web_Services.pdf) ===
+    "What cloud computing services does Amazon Web Services offer?",
+    "Which companies are the main competitors of Amazon AWS?",
+
+    # === Multi-hop: cross-source reasoning ===
+    "Which AI company was founded by people who previously worked at OpenAI?",
+    "What is the connection between Microsoft, OpenAI, and Azure cloud services?",
+    "How does Nvidia's GPU technology relate to the growth of companies like OpenAI and Anthropic?",
+    "What companies in the corpus are most closely connected to Elon Musk?",
+    "Compare the founding stories of OpenAI and Anthropic — what do they have in common?",
 ]
 
 

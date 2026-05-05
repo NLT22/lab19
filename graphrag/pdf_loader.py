@@ -6,16 +6,20 @@ from pypdf import PdfReader
 
 
 class PDFLoader:
-    def __init__(self, chunk_size: int = 800, overlap: int = 100):
+    def __init__(self, chunk_size: int = 800, overlap: int = 100, max_pages: int = 0):
         self.chunk_size = chunk_size
         self.overlap = overlap
+        self.max_pages = max_pages  # 0 = no limit
 
     def load_pdf(self, path: str) -> list[dict]:
         """Extract text from each page of a PDF, return list of {source, page, text}."""
         reader = PdfReader(path)
         source = Path(path).stem
         pages = []
-        for i, page in enumerate(reader.pages):
+        page_list = reader.pages
+        if self.max_pages > 0:
+            page_list = page_list[:self.max_pages]
+        for i, page in enumerate(page_list):
             text = page.extract_text() or ""
             text = text.strip()
             if text:
